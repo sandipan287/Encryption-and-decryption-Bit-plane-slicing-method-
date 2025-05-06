@@ -1,4 +1,4 @@
-//using bitplane slicing method
+//using bitplane slicing no image generates
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.File;
