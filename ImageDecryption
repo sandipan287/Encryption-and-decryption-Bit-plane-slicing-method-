@@ -1,0 +1,153 @@
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.File;
+import java.util.Scanner;
+import java.util.Random;
+
+public class ImageDecryption {
+    private static final String[] DNA_RULES = {
+        "ACTG", "ACGT", "AGCT", "AGTC", "ATCG", "ATGC",
+        "CAGT", "CATG", "CGAT", "CGTA", "CTAG", "CTGA",
+        "GACT", "GATC", "GCAT", "GCTA", "GTAC", "GTCA",
+        "TACG", "TAGC", "TCAG", "TCGA", "TGAC", "TGCA"
+    };
+
+    public static void main(String[] args) {
+        Scanner sc = new Scanner(System.in);
+        System.out.println("IMAGE DECRYPTION");
+
+        try {
+            System.out.print("Encrypted image path: ");
+            BufferedImage img = ImageIO.read(new File(sc.nextLine()));
+
+            System.out.print("Decrypted output path: ");
+            String outputPath = sc.nextLine();
+
+            System.out.print("Decryption key: ");
+            long key = sc.nextLong();
+
+            decryptImage(img, key);
+            ImageIO.write(img, "PNG", new File(outputPath));
+            System.out.println("Decryption successful !!!");
+
+            // Call bit plane slicing
+            displayBitPlanes(img);
+
+        } catch (Exception e) {
+            System.err.println("Decryption failed: " + e.getMessage());
+        } finally {
+            sc.close();
+        }
+    }
+
+    private static void decryptImage(BufferedImage img, long key) {
+        int width = img.getWidth();
+        int height = img.getHeight();
+        int[][][] rgbData = new int[height][width][3];
+
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                int rgb = img.getRGB(x, y);
+                rgbData[y][x][0] = (rgb >> 16) & 0xFF;
+                rgbData[y][x][1] = (rgb >> 8) & 0xFF;
+                rgbData[y][x][2] = rgb & 0xFF;
+            }
+        }
+
+        for (int y = height - 1; y >= 0; y--) {
+            for (int x = width - 1; x >= 0; x--) {
+                long pixelKey = key ^ (x << 32) ^ (y << 16);
+
+                rgbData[y][x][2] = reverseTransform(rgbData[y][x][2], pixelKey + 2, rgbData[y][x][1]);
+                rgbData[y][x][1] = reverseTransform(rgbData[y][x][1], pixelKey + 1, rgbData[y][x][0]);
+                rgbData[y][x][0] = reverseTransform(rgbData[y][x][0], pixelKey, 0);
+            }
+        }
+
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                int r = rgbData[y][x][0];
+                int g = rgbData[y][x][1];
+                int b = rgbData[y][x][2];
+                img.setRGB(x, y, (r << 16) | (g << 8) | b);
+            }
+        }
+
+        unscrambleImage(img, key);
+    }
+
+    private static int reverseTransform(int pixel, long key, int prevPixel) {
+        pixel = reverseDna(pixel, key);
+        pixel ^= (int)(key & 0xFF);
+        pixel = ((pixel >> 1) | (pixel << 7)) & 0xFF;
+        pixel ^= prevPixel;
+        return pixel;
+    }
+
+    private static int reverseDna(int pixel, long key) {
+        int ruleIdx = (int)((key >> 8) % DNA_RULES.length);
+        String rule = DNA_RULES[ruleIdx];
+        int rotate = (int)(key & 0b11);
+        rule = rule.substring(rotate) + rule.substring(0, rotate);
+
+        StringBuilder dna = new StringBuilder();
+        for (int i = 0; i < 4; i++) {
+            int bits = (pixel >> (6 - 2 * i)) & 0b11;
+            dna.append(rule.charAt(bits));
+        }
+
+        dna.reverse();
+        int result = 0;
+        for (int i = 0; i < 4; i++) {
+            result = (result << 2) | rule.indexOf(dna.charAt(i));
+        }
+        return result;
+    }
+
+    private static void unscrambleImage(BufferedImage img, long seed) {
+        int width = img.getWidth();
+        int height = img.getHeight();
+        int totalPixels = width * height;
+        int[] permutation = new int[totalPixels];
+        for (int i = 0; i < totalPixels; i++) permutation[i] = i;
+
+        Random rand = new Random(seed);
+        for (int i = totalPixels - 1; i > 0; i--) {
+            int j = rand.nextInt(i + 1);
+            int temp = permutation[i];
+            permutation[i] = permutation[j];
+            permutation[j] = temp;
+        }
+
+        int[] pixels = img.getRGB(0, 0, width, height, null, 0, width);
+        int[] unscrambled = new int[totalPixels];
+        for (int i = 0; i < totalPixels; i++) {
+            unscrambled[i] = pixels[permutation[i]];
+        }
+        img.setRGB(0, 0, width, height, unscrambled, 0, width);
+    }
+
+    // Bit Plane Slicing
+    public static void displayBitPlanes(BufferedImage img) {
+        int width = img.getWidth();
+        int height = img.getHeight();
+
+        for (int bit = 0; bit < 8; bit++) {
+            BufferedImage bitPlane = new BufferedImage(width, height, BufferedImage.TYPE_BYTE_BINARY);
+            for (int y = 0; y < height; y++) {
+                for (int x = 0; x < width; x++) {
+                    int rgb = img.getRGB(x, y);
+                    int gray = (rgb >> 16) & 0xFF;
+                    int value = (gray >> bit) & 1;
+                    int binary = value == 1 ? 0xFFFFFF : 0x000000;
+                    bitPlane.setRGB(x, y, binary);
+                }
+            }
+            try {
+                ImageIO.write(bitPlane, "PNG", new File("bitplane_decryption_" + bit + ".png"));
+            } catch (Exception e) {
+                System.out.println("Error saving bitplane: " + e.getMessage());
+            }
+        }
+    }
+}
