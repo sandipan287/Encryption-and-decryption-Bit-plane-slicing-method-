@@ -1,4 +1,4 @@
-//using bitplane slicing method
+//using bitplane slicing with adding 8 images of bit-plane
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.File;
